@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import database
 from app.passwords import hash_password, validate_password, verify_password
 from app.permissions import CATALOG_ACTIONS, has_permission
+from app.second_factor import consume_second_factor
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 security = HTTPBearer()
@@ -30,6 +31,14 @@ class LoginInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: str = Field(min_length=3, max_length=254)
     password: SecretStr
+    second_factor: SecretStr | None = None
+
+    @field_validator("second_factor")
+    @classmethod
+    def second_factor_size(cls, value):
+        if value is not None and not 6 <= len(value.get_secret_value()) <= 64:
+            raise ValueError("Segundo factor no válido.")
+        return value
 
     @field_validator("email")
     @classmethod
@@ -123,7 +132,7 @@ def _rate_limit(request, email):
                 raise HTTPException(429, "Demasiados intentos. Intenta más tarde.", headers={"Retry-After": "900"})
 
 
-def _session_response(user, session_id, refresh_token, response):
+def _session_response(user, session_id, refresh_token, response, mfa_verified=False):
     now = datetime.now(UTC)
     claims = {
         "sub": str(user["id"]), "sid": str(session_id), "jti": str(uuid4()),
@@ -136,21 +145,29 @@ def _session_response(user, session_id, refresh_token, response):
     return {
         "access_token": token, "token_type": "bearer",
         "expires_in": settings.access_token_minutes * 60, "refresh_token": refresh_token,
+        "mfa_required": _requires_mfa(user) and not mfa_verified,
         "user": {"id": str(user["id"]), "email": user["email"], "app_metadata": {"role": user["role"], "auth_provider": "aquabloom"}},
     }
 
 
-def _new_session(user, response):
+def _requires_mfa(user):
+    return settings.environment == "production" and user["role"] == "administrador"
+
+
+def _new_session(user, response, mfa_verified=False):
     session_id, token = str(uuid4()), secrets.token_urlsafe(48)
+    duration = timedelta(hours=8) if _requires_mfa(user) else timedelta(days=settings.refresh_token_days)
+    if _requires_mfa(user) and not mfa_verified:
+        duration = timedelta(minutes=5)
     with require_database().connection() as connection:
         connection.execute(
-            """INSERT INTO public.auth_sessions(id,user_id,refresh_hash,expires_at)
-               VALUES(%s,%s,%s,%s)""",
-            (session_id, str(user["id"]), digest(token), datetime.now(UTC) + timedelta(days=settings.refresh_token_days)),
+            """INSERT INTO public.auth_sessions(id,user_id,refresh_hash,expires_at,mfa_verified)
+               VALUES(%s,%s,%s,%s,%s)""",
+            (session_id, str(user["id"]), digest(token), datetime.now(UTC) + duration, mfa_verified),
         )
         connection.execute("DELETE FROM public.auth_sessions WHERE expires_at < now()")
         connection.execute("DELETE FROM public.login_attempts WHERE window_start < now()-interval '1 day'")
-    return _session_response(user, session_id, token, response)
+    return _session_response(user, session_id, token, response, mfa_verified)
 
 
 @router.post("/register", status_code=201)
@@ -182,27 +199,34 @@ def login(payload: LoginInput, request: Request, response: Response):
     matched = verify_password(payload.password.get_secret_value(), encoded)
     if not user or not matched or user["status"] != "active":
         raise HTTPException(401, "Correo o contraseña incorrectos.")
-    return _new_session(user, response)
+    with require_database().connection() as connection:
+        verified, _ = consume_second_factor(
+            connection, user["id"], payload.second_factor.get_secret_value() if payload.second_factor else None,
+        )
+    return _new_session(user, response, verified)
 
 
 @router.post("/refresh")
-def refresh(payload: RefreshInput, response: Response):
+def refresh(payload: RefreshInput, request: Request, response: Response):
+    _rate_limit(request, "refresh:" + digest(payload.refresh_token.get_secret_value()))
     token = secrets.token_urlsafe(48)
     with require_database().connection() as connection:
         row = connection.execute(
-            """SELECT s.id,s.user_id,u.email,u.role FROM public.auth_sessions s
+            """SELECT s.id,s.user_id,s.mfa_verified,u.email,u.role FROM public.auth_sessions s
                JOIN public.users u ON u.id=s.user_id
                WHERE s.refresh_hash=%s AND s.expires_at>now() AND u.status='active'
+               AND (u.role<>'administrador' OR
+                    (s.created_at>now()-interval '8 hours' AND s.last_activity_at>now()-interval '20 minutes'))
                FOR UPDATE OF s""", (digest(payload.refresh_token.get_secret_value()),),
         ).fetchone()
         if not row:
             raise HTTPException(401, "Sesión vencida o revocada.")
         connection.execute("UPDATE public.auth_sessions SET refresh_hash=%s WHERE id=%s", (digest(token), row["id"]))
     user = {"id": row["user_id"], "email": row["email"], "role": row["role"]}
-    return _session_response(user, row["id"], token, response)
+    return _session_response(user, row["id"], token, response, row["mfa_verified"])
 
 
-def verify_access_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+def verify_session(credentials, request, allow_enrollment=False):
     try:
         payload = jwt.decode(
             credentials.credentials, settings.jwt_secret.get_secret_value(),
@@ -214,22 +238,42 @@ def verify_access_token(credentials: HTTPAuthorizationCredentials = Security(sec
         raise AuthException("Token inválido o vencido.", {"code": "INVALID_TOKEN"}) from exc
     with require_database().connection() as connection:
         user = connection.execute(
-            """SELECT u.id,u.email,u.role FROM public.users u JOIN public.auth_sessions s ON s.user_id=u.id
-               WHERE u.id=%s AND s.id=%s AND u.status='active' AND s.expires_at>now()""",
+            """SELECT u.id,u.email,u.role,s.mfa_verified,s.created_at FROM public.users u
+               JOIN public.auth_sessions s ON s.user_id=u.id
+               WHERE u.id=%s AND s.id=%s AND u.status='active' AND s.expires_at>now()
+               AND (u.role<>'administrador' OR
+                    (s.created_at>now()-interval '8 hours' AND s.last_activity_at>now()-interval '20 minutes'))""",
             (user_id, session_id),
         ).fetchone()
+        if user:
+            if _requires_mfa(user) and not user["mfa_verified"] and not allow_enrollment:
+                raise HTTPException(403, "Vincula y confirma tu segundo factor antes de acceder.")
+            if _requires_mfa(user) and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                if user["created_at"] < datetime.now(UTC) - timedelta(minutes=5):
+                    raise HTTPException(401, "Inicia sesión de nuevo para realizar esta operación.")
+            # Polling and refresh never prolong the administrative inactivity window.
+            if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                connection.execute("UPDATE public.auth_sessions SET last_activity_at=now() WHERE id=%s", (session_id,))
     if not user:
         raise AuthException("Sesión vencida o revocada.", {"code": "SESSION_REVOKED"})
     payload.update(email=user["email"], role=user["role"], app_metadata={"role": user["role"]})
     return payload
 
 
-def optional_verify_access_token(credentials: HTTPAuthorizationCredentials | None = Security(optional_security)):
-    return None if credentials is None else verify_access_token(credentials)
+def verify_access_token(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)):
+    return verify_session(credentials, request)
+
+
+def verify_enrollment_session(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)):
+    return verify_session(credentials, request, allow_enrollment=True)
+
+
+def optional_verify_access_token(request: Request, credentials: HTTPAuthorizationCredentials | None = Security(optional_security)):
+    return None if credentials is None else verify_access_token(request, credentials)
 
 
 @router.post("/logout", status_code=204)
-def logout(payload: dict = Security(verify_access_token)):
+def logout(payload: dict = Security(verify_enrollment_session)):
     with require_database().connection() as connection:
         connection.execute("DELETE FROM public.auth_sessions WHERE id=%s AND user_id=%s", (payload["sid"], payload["sub"]))
     return Response(status_code=204, headers={"Cache-Control": "no-store"})

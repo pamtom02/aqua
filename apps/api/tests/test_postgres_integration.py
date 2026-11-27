@@ -77,13 +77,74 @@ with TestClient(app) as http:
     public=http.get("/openapi.json").json()
     assert public["servers"][0]["url"]=="/"
 with database.connection() as connection:
-    assert connection.execute("SELECT count(*) AS n FROM public.schema_migrations").fetchone()["n"]==3
+    assert connection.execute("SELECT count(*) AS n FROM public.schema_migrations").fetchone()["n"]==4
 try:
     database.table("lakes").insert({"name":"Test Lake","region":"x","geom":polygon}).execute()
 except APIError as exc:
     assert exc.code=="23505"
 else:
     raise AssertionError("Unique constraint not enforced")
+
+# Exercise actual production enforcement without ever printing test credentials.
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, UTC
+from cryptography.fernet import Fernet
+from pydantic import SecretStr
+import pyotp
+from app.config import settings
+settings.environment="production"
+settings.mfa_encryption_key=SecretStr(Fernet.generate_key().decode())
+credentials={"email":"admin@example.invalid","password":"Integration-password-2026!"}
+with TestClient(app) as http:
+    setup=http.post("/auth/login",json=credentials)
+    assert setup.status_code==200
+    assert setup.json()["mfa_required"] is True
+    setup_headers={"Authorization":"Bearer "+setup.json()["access_token"]}
+    assert http.get("/auth/me",headers=setup_headers).status_code==403
+    enrollment=http.post("/auth/mfa/enroll",headers=setup_headers)
+    assert enrollment.status_code==200
+    assert enrollment.headers["cache-control"]=="no-store"
+    authenticator=pyotp.parse_uri(enrollment.json()["provisioning_uri"])
+    with database.connection() as connection:
+        encrypted=connection.execute("SELECT encrypted_secret FROM public.user_mfa WHERE user_id=%s",(admin["id"],)).fetchone()["encrypted_secret"]
+        assert authenticator.secret not in encrypted
+    confirmed=http.post("/auth/mfa/confirm",headers=setup_headers,json={"code":authenticator.now()})
+    assert confirmed.status_code==200
+    assert confirmed.json()["mfa_required"] is False
+    assert len(confirmed.json()["recovery_codes"])==10
+    verified_headers={"Authorization":"Bearer "+confirmed.json()["access_token"]}
+    assert http.get("/auth/me",headers=setup_headers).status_code==401
+    assert http.get("/auth/me",headers=verified_headers).status_code==200
+    assert http.post("/auth/login",json=credentials).status_code==401
+    assert http.post("/auth/login",json={**credentials,"second_factor":authenticator.now()}).status_code==401
+    counter=authenticator.timecode(datetime.now(UTC))+1
+    next_code=authenticator.at(counter*authenticator.interval)
+    def concurrent_login(_):
+        with TestClient(app) as parallel:
+            return parallel.post("/auth/login",json={**credentials,"second_factor":next_code}).status_code
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        assert sorted(executor.map(concurrent_login,range(2)))==[200,401]
+    recovery_code=confirmed.json()["recovery_codes"][0]
+    recovered=http.post("/auth/login",json={**credentials,"second_factor":recovery_code})
+    assert recovered.status_code==200
+    assert http.post("/auth/login",json={**credentials,"second_factor":recovery_code}).status_code==401
+    assert http.get("/auth/me",headers=verified_headers).status_code==401
+    active_headers={"Authorization":"Bearer "+recovered.json()["access_token"]}
+    with database.connection() as connection:
+        session=connection.execute("SELECT id,last_activity_at FROM public.auth_sessions WHERE user_id=%s",(admin["id"],)).fetchone()
+        assert connection.execute("SELECT count(*) AS n FROM public.mfa_recovery_codes WHERE user_id=%s",(admin["id"],)).fetchone()["n"]==9
+    assert http.get("/auth/me",headers=active_headers).status_code==200
+    with database.connection() as connection:
+        assert connection.execute("SELECT last_activity_at FROM public.auth_sessions WHERE id=%s",(session["id"],)).fetchone()["last_activity_at"]==session["last_activity_at"]
+        connection.execute("UPDATE public.auth_sessions SET created_at=now()-interval '6 minutes' WHERE id=%s",(session["id"],))
+    assert http.post("/api/v1/organizations",headers=active_headers,json={"name":"Recent","identifier":"recent"}).status_code==401
+    with database.connection() as connection:
+        connection.execute("UPDATE public.auth_sessions SET last_activity_at=now()-interval '21 minutes' WHERE id=%s",(session["id"],))
+    assert http.get("/auth/me",headers=active_headers).status_code==401
+    assert http.post("/auth/refresh",json={"refresh_token":recovered.json()["refresh_token"]}).status_code==401
+    with database.connection() as connection:
+        connection.execute("UPDATE public.auth_sessions SET last_activity_at=now(),created_at=now()-interval '9 hours' WHERE id=%s",(session["id"],))
+    assert http.get("/auth/me",headers=active_headers).status_code==401
 print("PostgreSQL, sessions, roles, isolation, GeoJSON and migrations: OK")
 '''
     environment = {**os.environ, "DATABASE_URL": client}

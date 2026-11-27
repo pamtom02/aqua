@@ -18,6 +18,9 @@ def prepare():
         settings.internal_service_token is None or len(settings.internal_service_token.get_secret_value()) < 32
     ):
         raise RuntimeError("INTERNAL_SERVICE_TOKEN necesita al menos 32 caracteres aleatorios.")
+    if settings.environment == "production":
+        from app.second_factor import cipher
+        cipher()
     for attempt in range(30):
         try:
             with database.connection() as connection:

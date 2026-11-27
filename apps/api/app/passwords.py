@@ -10,8 +10,14 @@ N, R, P = 131072, 8, 1
 
 
 def validate_password(password: str):
-    if not 12 <= len(password) <= 256 or any(ord(char) < 32 for char in password):
-        raise ValueError("La contraseña debe contener entre 12 y 256 caracteres sin controles.")
+    if not 15 <= len(password) <= 256 or any(ord(char) < 32 for char in password):
+        raise ValueError("La contraseña debe contener entre 15 y 256 caracteres sin controles.")
+    normalized = password.casefold()
+    common = {"password", "contraseña", "contrasena", "1234567890", "qwerty", "letmein"}
+    if len(set(normalized)) < 4 or any(
+        normalized.replace(word, "").strip("0123456789!@#$%^&* ._-") == "" for word in common
+    ):
+        raise ValueError("Elige una contraseña que no sea común ni repetitiva.")
 
 
 def hash_password(password: str, salt: bytes | None = None):

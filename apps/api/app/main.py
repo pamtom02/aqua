@@ -6,6 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.auth import AuthException
 from app.auth import router as auth_router
+from app.mfa import router as mfa_router
 from app.config import settings
 from app.dashboard import router as dashboard_router
 from app.database import check_database_connection
@@ -13,6 +14,7 @@ from app.datasets import router as datasets_router
 from app.dependencies import require_permission
 from app.gateway import router as gateway_router
 from app.handlers import auth_exception_handler, global_exception_handler
+from app.http_security import HttpSecurityMiddleware
 from app.imports import router as imports_router
 from app.lakes import router as lakes_router
 
@@ -67,6 +69,7 @@ COMMON_RESPONSES = {
 async def http_exception_handler(request, exc):
     return JSONResponse(
         status_code=exc.status_code,
+        headers=exc.headers,
         content={"error": "Not Found" if exc.status_code == 404 else "HTTP Error", "message": str(exc.detail)},
     )
 
@@ -81,6 +84,7 @@ app.add_exception_handler(AuthException, auth_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
 app.include_router(auth_router)
+app.include_router(mfa_router)
 app.include_router(gateway_router)
 app.include_router(organizations_router)
 app.include_router(imports_router)
@@ -103,6 +107,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Idempotency-Key", "X-Correlation-ID"],
 )
+app.add_middleware(HttpSecurityMiddleware)
 
 @app.get("/")
 def read_root():

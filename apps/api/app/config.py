@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: SecretStr = SecretStr("")
     jwt_secret: SecretStr = SecretStr("")
+    mfa_encryption_key: SecretStr | None = None
     jwt_issuer: str = "aquabloom"
     access_token_minutes: int = 20
     refresh_token_days: int = 7
