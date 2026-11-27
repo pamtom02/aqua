@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     environment: str = "development"
+    app_revision: str = ""
     database_url: SecretStr = SecretStr("")
     jwt_secret: SecretStr = SecretStr("")
     mfa_encryption_key: SecretStr | None = None

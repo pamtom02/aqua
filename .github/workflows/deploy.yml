@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -24,6 +24,7 @@ jobs:
       KUBERO_PIPELINE: ${{ vars.KUBERO_PIPELINE || 'facu' }}
       KUBERO_APPS: ${{ vars.KUBERO_APPS || 'api' }}
       API_BASE_URL: ${{ vars.API_BASE_URL }}
+      EXPECTED_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Redeploy configured apps
         shell: bash
@@ -31,6 +32,10 @@ jobs:
           set -euo pipefail
           if [ -z "$KUBERO_TOKEN" ]; then
             echo "::error::Configure the repository secret KUBERO_TOKEN before deployment."
+            exit 1
+          fi
+          if [[ ! "$API_BASE_URL" =~ ^https://[a-zA-Z0-9.-]+(:[0-9]+)?/?$ ]] || [ -z "$KUBERO_APPS" ]; then
+            echo "::error::Configure API_BASE_URL as an HTTPS origin and KUBERO_APPS before deployment."
             exit 1
           fi
           if [[ ! "$KUBERO_PIPELINE" =~ ^[a-z0-9-]+$ ]]; then
@@ -53,15 +58,16 @@ jobs:
             echo "Restart accepted: $app"
           done
       - name: Verify API readiness
-        if: env.API_BASE_URL != ''
         shell: bash
         run: |
           set -euo pipefail
           for attempt in $(seq 1 30); do
             if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
               "${API_BASE_URL%/}/api/v1/health" -o /tmp/aqua-health.json; then
-              cat /tmp/aqua-health.json
-              exit 0
+              if python -c 'import json,os; h=json.load(open("/tmp/aqua-health.json")); assert h["status"]=="ok" and h["database"]["status"]=="ok" and h["revision"]==os.environ["EXPECTED_REVISION"]'; then
+                echo "API and PostgreSQL are ready."
+                exit 0
+              fi
             fi
             sleep 5
           done

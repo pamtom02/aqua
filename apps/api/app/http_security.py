@@ -2,7 +2,9 @@
 import asyncio
 
 from starlette.datastructures import Headers
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app.config import settings
@@ -52,6 +54,23 @@ class HttpSecurityMiddleware:
 
         if status:
             return await JSONResponse({"message": detail}, status_code=status)(scope, receive, secured_send)
+        if settings.environment == "production" and headers.get("content-type", "").startswith("multipart/form-data"):
+            # FastAPI parses multipart before route dependencies. Authenticate at
+            # this outer boundary so unauthenticated uploads never reach parsing.
+            from app.auth import AuthException, verify_session
+            from app.dependencies import require_internal_service
+            from fastapi.security import HTTPAuthorizationCredentials
+            try:
+                if scope["path"].startswith("/api/v1/executions/") and scope["path"].endswith("/artifact"):
+                    require_internal_service(headers.get("x-internal-token"))
+                else:
+                    scheme, _, token = headers.get("authorization", "").partition(" ")
+                    if scheme.lower() != "bearer" or not token:
+                        raise HTTPException(401, "Autenticación requerida antes de cargar archivos.")
+                    await run_in_threadpool(verify_session, HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), Request(scope))
+            except (HTTPException, AuthException) as exc:
+                error_status = exc.status_code if isinstance(exc, HTTPException) else 401
+                return await JSONResponse({"message": "Carga no autorizada."}, status_code=error_status)(scope, receive, secured_send)
         received = 0
 
         async def limited_receive():

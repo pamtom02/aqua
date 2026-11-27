@@ -80,6 +80,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ./apps/${{ matrix.service }}
+          build-args: APP_REVISION=${{ github.sha }}
           load: true
           push: false
           tags: |

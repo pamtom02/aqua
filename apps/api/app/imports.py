@@ -91,7 +91,9 @@ async def create_import(
             detail="La clave de idempotencia no puede estar vacía.",
         )
 
-    content = await file.read()
+    content = await file.read(100 * 1024 * 1024 + 1)
+    if len(content) > 100 * 1024 * 1024:
+        raise HTTPException(413, "El archivo de importación supera 100 MiB.")
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

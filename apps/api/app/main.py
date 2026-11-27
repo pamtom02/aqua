@@ -116,7 +116,8 @@ def read_root():
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
     db_status = check_database_connection()
-    body = {"service": "AquaBloom Sur", "version": "v1", "status": "ok" if db_status["status"] == "ok" else "degraded", "database": db_status}
+    body = {"service": "AquaBloom Sur", "version": "v1", "revision": settings.app_revision,
+            "status": "ok" if db_status["status"] == "ok" else "degraded", "database": db_status}
     return JSONResponse(status_code=200 if db_status["status"] == "ok" else 503, content=body)
 
 

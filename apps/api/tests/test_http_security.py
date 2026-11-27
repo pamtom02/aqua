@@ -27,3 +27,15 @@ def test_streamed_body_limit_does_not_depend_on_content_length():
         yield b"x" * (1024 * 1024 + 1)
     response = client.post("/auth/login", content=body(), headers={"Content-Type": "application/json"})
     assert response.status_code == 413
+
+
+def test_production_upload_authentication_precedes_body_parsing(monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "environment", "production")
+    def body():
+        raise AssertionError("Una carga anónima no debe consumir el cuerpo")
+        yield b""
+    response = client.post("/api/v1/imports", content=body(),
+                           headers={"Content-Type": "multipart/form-data; boundary=test"})
+    assert response.status_code == 401
+    assert response.headers["strict-transport-security"] == "max-age=31536000"

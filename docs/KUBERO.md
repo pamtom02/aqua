@@ -32,6 +32,9 @@ Agrega el complemento **PostgreSQL** a api:
 
 - Instance Name: postgres.
 - Version/Tag: 17.6.
+- 17.6 es la versión observada en el complemento, no la revisión de seguridad vigente.
+  Antes de activar producción, seleccionar una revisión 17.x actual compatible con UCT
+  o pedir su actualización al administrador. No cambiar de versión mayor sobre un volumen existente.
 - Database Name: aquabloom.
 - Additional Username: aquabloom.
 - Contraseñas: valores propios, configurados en Kubero.
@@ -59,6 +62,7 @@ Las migraciones se aplican automáticamente al arrancar la imagen. No ejecutes l
 | ENVIRONMENT | production |
 | DATABASE_URL | conexión del complemento |
 | JWT_SECRET | secreto aleatorio de al menos 32 caracteres |
+| MFA_ENCRYPTION_KEY | clave Fernet propia de este proyecto, distinta de JWT_SECRET y custodiada fuera de PostgreSQL |
 | INTERNAL_SERVICE_TOKEN | otro secreto aleatorio de al menos 32 caracteres |
 | STORAGE_ROOT | /app/data |
 | ALLOW_REGISTRATION | false, o true si el proyecto permite registro público |
@@ -66,9 +70,39 @@ Las migraciones se aplican automáticamente al arrancar la imagen. No ejecutes l
 | SATELLITE_SERVICE_URL | http://satellite-kuberoapp:80 |
 | SCIENTIFIC_SERVICE_URL | http://scientific-kuberoapp:80 |
 | BOOTSTRAP_ADMIN_EMAIL | correo de la primera cuenta, opcional |
-| BOOTSTRAP_ADMIN_PASSWORD | contraseña inicial de 12 a 256 caracteres, opcional |
+| BOOTSTRAP_ADMIN_PASSWORD | contraseña inicial de 15 a 256 caracteres, opcional |
 
 Tras crear la primera cuenta, retira las dos variables BOOTSTRAP. Las cuentas previas de Supabase no se importan automáticamente.
+
+La clave MFA es una clave Fernet de 32 bytes aleatorios codificada en base64 URL-safe.
+El propietario debe generarla en su gestor de secretos y configurarla directamente en Kubero;
+no pegarla en el chat, en argumentos de consola ni en archivos públicos. Sin una clave válida
+la API no arranca en producción. Guardar una copia separada de los respaldos de PostgreSQL.
+
+### Vinculación personal del segundo factor
+
+El propietario realiza estos pasos desde un cliente seguro sobre HTTPS, sin grabaciones ni capturas:
+
+1. `POST /auth/login` con correo y contraseña. Si el administrador aún no tiene MFA,
+   devuelve `mfa_required=true` y una sesión restringida de cinco minutos.
+   Esa sesión solo permite vincular MFA y cerrar sesión; no habilita operaciones privadas.
+2. `POST /auth/mfa/enroll` con el Bearer de esa sesión. Registrar el `provisioning_uri`
+   localmente en el autenticador; nunca enviarlo a un generador de QR externo.
+3. `POST /auth/mfa/confirm` con ese Bearer y JSON `code` del autenticador. Solo la
+   confirmación correcta activa MFA. Devuelve una sesión nueva y diez códigos de recuperación;
+   guardarlos en el gestor de secretos. Solo se muestran una vez y se almacenan mediante hash.
+4. En siguientes logins enviar `second_factor` junto con correo y contraseña. Acepta
+   el TOTP o un código de recuperación de un solo uso. La recuperación revoca las demás sesiones.
+
+La semilla se cifra con Fernet. PostgreSQL serializa la aceptación de TOTP para impedir
+repeticiones entre procesos. Una sesión administrativa vence tras ocho horas o veinte minutos
+sin escritura explícita; GET y refresh automáticos no prolongan ese plazo. Las escrituras
+administrativas requieren un login de los últimos cinco minutos. El cliente debe soportar
+estos estados antes de dar acceso administrativo a una web o app móvil.
+
+No guardar el Bearer ni el refresh token en localStorage. Para un cliente web que necesite
+cookies, implementar un adaptador de sesión con HttpOnly y CSRF antes de habilitar ese flujo;
+la API actual usa Authorization explícito y no autentica mediante cookies.
 
 ## 5. Servicios de procesamiento
 

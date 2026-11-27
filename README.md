@@ -36,6 +36,10 @@ El primer despliegue requiere crear las aplicaciones, PostgreSQL, Redis y el vol
 
 Las contraseñas se guardan con scrypt y sal aleatoria. El token JWT vence a los 20 minutos y se comprueba contra una sesión revocable en PostgreSQL. El rol se lee del servidor; el cliente no puede asignarlo al registrarse.
 
+En producción, los administradores deben vincular MFA antes de acceder a operaciones privadas.
+La confirmación personal y los códigos de recuperación se explican en [docs/KUBERO.md](docs/KUBERO.md).
+Preparar el flujo no significa que el propietario ya tenga el segundo factor activado.
+
 Crea la primera cuenta con BOOTSTRAP_ADMIN_EMAIL y BOOTSTRAP_ADMIN_PASSWORD. Quita esas variables después del primer arranque; no son una puerta de acceso permanente ni cambian una contraseña existente.
 
 ## Persistencia
@@ -50,13 +54,19 @@ Esta versión prepara una base nueva. Migrar cuentas, datos o archivos existente
 
 Desde apps/api:
 ```sh
-python -m pip install -r requirements.txt pytest httpx2
+python -m pip install --require-hashes -r requirements.lock
+python -m pip install pytest==9.2.0 httpx2==2.16.2
 python -m pytest -q
 ```
 
 Para incluir la prueba real de base de datos, define TEST_DATABASE_URL apuntando a una base **nueva y desechable**. La prueba crea usuarios y datos de prueba. Sin esa variable, esa prueba se omite explícitamente.
 
 Para ejecutar localmente todos los contenedores: copia .env.example a .env, configura secretos y ejecuta docker compose up --build. Los secretos no se guardan en Git.
+
+Las imágenes y CI usan Python 3.12 y dependencias fijadas con hashes. La construcción
+audita los paquetes realmente instalados dentro de cada imagen antes de publicarla.
+Consulta [docs/SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) para controles,
+recuperación y comprobaciones pendientes en UCT.
 
 ## Alcance heredado
 
