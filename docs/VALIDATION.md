@@ -39,6 +39,18 @@ Actualizado el 27 de noviembre de 2026.
 
 ## Estado externo pendiente
 
+- Integrado por fast-forward en `main`: release `a7e17c598ef465ecea06450e66a3eea6208bcd3d`,
+  conservando autoría e historial. El último commit de documentación/configuración
+  puede ser posterior al SHA de la imagen; no debe confundirse con una nueva release.
+- [Build y publicación en main](https://github.com/pamtom02/aqua/actions/runs/45954233390):
+  154 pruebas de API, 23 satelitales y 25 científicas correctas: 202 en total.
+  Las tres imágenes se construyeron, auditaron y publicaron con `latest` y SHA.
+- Se verificó acceso anónimo HTTP 200 a los tres manifiestos de GHCR. Digest API:
+  `sha256:7ca71bcbec965dd838b98a7e71d3c50c7029744662473301fe3aa97c64d90c6d`.
+- Variables guardadas y verificadas en GitHub: `KUBERO_PIPELINE=facu` y `KUBERO_APPS=api`.
+- [Primer autodeploy](https://github.com/pamtom02/aqua/actions/runs/45954445421):
+  falló explícitamente por ausencia de `KUBERO_TOKEN`; no se envió un restart a UCT.
+
 - Kubero abre `/login`. No se han creado aplicaciones, complementos ni volúmenes
   durante esta continuación.
 - Falta autenticar al propietario en Kubero, configurar los secretos de infraestructura
@@ -49,6 +61,7 @@ Actualizado el 27 de noviembre de 2026.
   y confirmar su autenticador real y custodiar sus códigos.
 - No se han importado datos, cuentas ni archivos de Supabase.
 
-La siguiente revisión de Actions debe verificar los últimos cambios de documentación,
-el rechazo temprano de cargas anónimas y la comprobación de revisión tras el despliegue.
-Registrar el resultado real después de integrar y publicar en GHCR/Kubero.
+La construcción valida el rechazo temprano de cargas anónimas. La comprobación de
+revisión tras el despliegue sigue pendiente de una API real. En un disparo manual,
+indicar el SHA completo de la release publicada, no el de un commit posterior que
+solo modifique documentación. El workflow verifica SHA y disponibilidad de PostgreSQL.

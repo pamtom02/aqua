@@ -140,6 +140,12 @@ Los procesos worker usan una sola réplica. El despliegue de la API principal pe
 
 El workflow no usa nombres del ejemplo anterior. Si Kubero devuelve 401, 403 o 404, el despliegue falla explícitamente. Una solicitud de restart aceptada no garantiza que el proceso esté listo; la comprobación posterior consulta /api/v1/health.
 
+La comprobación exige `API_BASE_URL` por HTTPS y verifica también el SHA de la imagen.
+Al disparar manualmente **Deploy to Kubero**, completa `revision` con el SHA completo
+de la release que ya existe en GHCR y está configurada en Kubero. Esto permite
+redesplegar aunque `main` tenga después cambios exclusivos de documentación.
+La release verificada de esta entrega es `a7e17c598ef465ecea06450e66a3eea6208bcd3d`.
+
 ## 7. Verificación
 
 - /health/live debe responder 200.

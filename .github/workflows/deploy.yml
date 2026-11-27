@@ -6,6 +6,11 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      revision:
+        description: "Full SHA of the audited release already published to GHCR"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,12 +29,16 @@ jobs:
       KUBERO_PIPELINE: ${{ vars.KUBERO_PIPELINE || 'facu' }}
       KUBERO_APPS: ${{ vars.KUBERO_APPS || 'api' }}
       API_BASE_URL: ${{ vars.API_BASE_URL }}
-      EXPECTED_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+      EXPECTED_REVISION: ${{ github.event.workflow_run.head_sha || inputs.revision }}
     steps:
       - name: Redeploy configured apps
         shell: bash
         run: |
           set -euo pipefail
+          if [[ ! "$EXPECTED_REVISION" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::Select the full SHA of the published release."
+            exit 1
+          fi
           if [ -z "$KUBERO_TOKEN" ]; then
             echo "::error::Configure the repository secret KUBERO_TOKEN before deployment."
             exit 1
