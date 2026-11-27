@@ -12,6 +12,7 @@ client = TestClient(app)
 
 
 def test_get_organization_members_requires_active_membership(monkeypatch):
+    monkeypatch.setattr("app.organizations.database", object())
     requester_id = uuid4()
     organization_id = uuid4()
 
@@ -39,6 +40,7 @@ def test_get_organization_members_requires_active_membership(monkeypatch):
 
 
 def test_get_organization_members_returns_not_found_for_missing_org(monkeypatch):
+    monkeypatch.setattr("app.organizations.database", object())
     requester_id = uuid4()
     organization_id = uuid4()
 

@@ -64,9 +64,10 @@ with TestClient(app) as http:
     assert http.post("/api/v1/organizations",headers=reader,json={"name":"No","identifier":"no"}).status_code==403
     assert http.get("/api/v1/organizations/"+org_id+"/members",headers=reader).status_code==403
     assert http.post("/auth/register",json={"email":"attacker@example.invalid","password":"Reader-password-2026!","full_name":"Bad","role":"administrador"}).status_code==422
-    bad=http.post("/auth/login",json={"email":"admin@example.invalid","password":"incorrect"})
+    rejected_password="Rejected-login-secret-82374!"
+    bad=http.post("/auth/login",json={"email":"admin@example.invalid","password":rejected_password})
     assert bad.status_code==401
-    assert "incorrect" not in bad.text
+    assert rejected_password not in bad.text
     refreshed=http.post("/auth/refresh",json={"refresh_token":session["refresh_token"]})
     assert refreshed.status_code==200,refreshed.text
     assert http.post("/auth/refresh",json={"refresh_token":session["refresh_token"]}).status_code==401

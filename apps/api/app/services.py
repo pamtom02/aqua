@@ -28,15 +28,8 @@ def get_dashboard_summary(
 
 
 def get_current_user_profile(client: Client, user_id: UUID, email: str | None) -> dict:
-    try:
-        client.table("profiles").upsert(
-            {"id": str(user_id), "email": email},
-            on_conflict="id",
-            ignore_duplicates=True,
-        ).execute()
-    except Exception:  # noqa: BLE001, S110
-        pass
-
+    # Identity creation writes the profile in the same transaction as the user.
+    # Reading a profile must not create incomplete records or suppress DB errors.
     return {
         "id": str(user_id),
         "email": email,
