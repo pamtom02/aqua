@@ -16,7 +16,7 @@ Dentro del pipeline **facu**, fase **production**, crea esta aplicación:
 | Imagen | ghcr.io/pamtom02/aqua-api |
 | Tag | latest |
 | Puerto | 8000 |
-| Dominio propuesto | api-aquabloom.inf.uct.cl, si está disponible |
+| Dominio desplegado | api-aquabloom.inf.uct.cl |
 | SSL | activado |
 | Réplicas | 1 web, 0 worker |
 | Perfil inicial | Small; aumenta según las métricas |
@@ -31,10 +31,9 @@ Monta un volumen en **/app/data**, por ejemplo aqua-files, 8Gi, clase **csi-ceph
 Agrega el complemento **PostgreSQL** a api:
 
 - Instance Name: postgres.
-- Version/Tag preparado para la base nueva: 17.12.
-- 17.6 era el valor predeterminado del complemento. El formulario admite 17.12 y
-  se verificó su manifiesto oficial en Docker Hub; falta verificar el arranque real
-  en UCT. Las pruebas de integración publicadas se ejecutaron con 17.6.
+- Version/Tag desplegado y confirmado en los registros: 17.12.
+- 17.6 era el valor predeterminado del complemento. La API arrancó y ejecutó sus
+  migraciones con 17.12 en UCT. Las pruebas de integración de Actions usaron 17.6.
   No cambiar de versión mayor sobre un volumen existente.
 - Database Name: aquabloom.
 - Additional Username: aquabloom.
@@ -147,6 +146,10 @@ Al disparar manualmente **Deploy to Kubero**, completa `revision` con el SHA com
 de la release que ya existe en GHCR y está configurada en Kubero. Esto permite
 redesplegar aunque `main` tenga después cambios exclusivos de documentación.
 La release verificada de esta entrega es `a7e17c598ef465ecea06450e66a3eea6208bcd3d`.
+
+La API está publicada y comprobada. Las variables BOOTSTRAP ya se retiraron después
+de crear la cuenta inicial. Falta completar el token de Actions y la vinculación
+personal del autenticador; consulta `VALIDATION.md` para el estado verificado.
 
 ## 7. Verificación
 

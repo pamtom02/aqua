@@ -52,26 +52,42 @@ Actualizado el 27 de noviembre de 2026.
 - [Primer autodeploy](https://github.com/pamtom02/aqua/actions/runs/45954445421):
   falló explícitamente por ausencia de `KUBERO_TOKEN`; no se envió un restart a UCT.
 
-- Sesión de Kubero autenticada por el propietario. `facu/production` seguía sin apps.
-- Formulario de nueva app `api` preparado, todavía sin guardar ni desplegar: imagen
-  pública, puerto 8000, SSL, dominio validado como disponible por Kubero, UID/GID 10001,
+- App `api` y complemento PostgreSQL creados en `facu/production`.
+  URL real: https://api-aquabloom.inf.uct.cl; puerto 8000, SSL, UID/GID 10001,
   raíz de solo lectura, sin escalada, una réplica web y cero workers, perfil Small,
   health `/health/live` con startup 120 s y timeout 5 s, volumen `/app/data` de 8Gi
-  con `csi-cephfs-sc` y `ReadWriteOnce`, variables públicas completas y campos privados
-  vacíos. No se afirma todavía disponibilidad DNS, certificado válido ni permisos del PVC.
-- Complemento PostgreSQL preparado en el mismo formulario: instancia `postgres`,
-  base/usuario `aquabloom`, host mostrado por Kubero `api-postgres`, tag 17.12,
-  recursos 50m/500m y 128Mi/512Mi, almacenamiento 8Gi CephFS RWO. Se verificó HTTP 200
-  al manifiesto oficial `postgres:17.12`; no se han creado aún estos recursos.
-- Falta que el propietario complete contraseñas y secretos directamente en Kubero,
-  guarde el complemento y cree la app. `KUBERO_TOKEN` sigue pendiente en GitHub.
+  con `csi-cephfs-sc` y `ReadWriteOnce`. Arranque real correcto con ese usuario.
+- PostgreSQL 17.12 confirmado en los registros del complemento: instancia `postgres`,
+  base/usuario `aquabloom`, host `api-postgres`, recursos 50m/500m y 128Mi/512Mi,
+  almacenamiento 8Gi CephFS RWO. La API aplicó sus migraciones y pudo consultar la base.
+- Comprobaciones HTTPS reales con validación del certificado: `/health/live`,
+  `/api/v1/health`, `/docs`, `/openapi.json` y `/api/v1/lakes` responden 200.
+  El health confirma PostgreSQL disponible y revisión
+  `a7e17c598ef465ecea06450e66a3eea6208bcd3d`. OpenAPI publica 44 rutas y servidor relativo.
+- Login de la primera cuenta correcto; devuelve `mfa_required=true`. Acceso privado
+  administrativo sin MFA rechazado con 403. Se cerraron las sesiones de comprobación.
+- Variables BOOTSTRAP retiradas después de verificar la creación de la cuenta.
+  El pod cambió de `web-f87fd4756-576hm` a `web-594d99744c-x8thf` y volvió a estar
+  listo. Health y login siguen correctos: cuenta persistente tras el redespliegue.
+- Frontera HTTP real: carga anónima 401, origen ajeno en escritura 403 y solicitud
+  comprimida 415. Cabeceras nosniff, DENY, CSP y HSTS presentes; el ingress añade
+  includeSubDomains al HSTS del host de la API.
+- Credenciales entregadas por petición expresa del propietario en Markdown local
+  privado fuera del repositorio. La contraseña de conexión fue elegida por él para
+  esta evaluación; no se publica aquí ni se incorpora en imágenes o comandos.
+- Pendiente `KUBERO_TOKEN`: formulario preparado con nombre
+  `aquabloom-github-actions` y vencimiento el 4 de diciembre de 2026 a las 23:59
+  (America/Santiago). Falta autorizar la creación de esa credencial persistente,
+  guardarla como secret de Actions y ejecutar el workflow de autodeploy.
 - El SHA incorporado en cada imagen permite distinguir una API antigua de la revisión
   esperada. Un restart aceptado o una construcción correcta no prueban el despliegue.
 - MFA está implementado y probado con cuentas sintéticas; el propietario debe vincular
   y confirmar su autenticador real y custodiar sus códigos.
 - No se han importado datos, cuentas ni archivos de Supabase.
 
-La construcción valida el rechazo temprano de cargas anónimas. La comprobación de
-revisión tras el despliegue sigue pendiente de una API real. En un disparo manual,
-indicar el SHA completo de la release publicada, no el de un commit posterior que
-solo modifique documentación. El workflow verifica SHA y disponibilidad de PostgreSQL.
+La comprobación de revisión ya pasó directamente sobre la API real. El workflow
+de autodeploy aún debe ejecutarse con su token. En un disparo manual, indicar el
+SHA completo de la release publicada, no el de un commit posterior que solo cambie
+documentación. Quedan pendientes la vinculación personal de MFA, las operaciones
+administrativas posteriores y un archivo real a través de ese flujo; no se declara
+la persistencia de archivos comprobada solo por ver el volumen montado.

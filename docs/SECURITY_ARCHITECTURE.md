@@ -74,6 +74,15 @@ UCT, volumen y permisos, ingress HTTPS y límites de cuerpo/tiempo, aislamiento 
 PostgreSQL y servicios internos, origen del cliente y métricas de memoria. El
 complemento visto usaba 17.6; no confundirlo con la revisión de seguridad actual.
 
+Estado efectivo en UCT: PostgreSQL 17.12 y API sobre HTTPS, con migraciones,
+readiness, revisión de imagen y login comprobados. Se retiraron las variables de
+bootstrap y se verificó la cuenta después de cambiar el pod. El propietario eligió
+una contraseña de base de datos de evaluación que no cumple la base de longitud
+recomendada; es una excepción explícita suya, pendiente de rotación antes de usar
+datos reales. Las demás claves son aleatorias e independientes. Por petición
+expresa se entregó un Markdown privado local con credenciales, fuera de Git; no
+se amplía esa excepción a repositorios, imágenes, capturas o registros públicos.
+
 Respaldos propuestos: diarios, cifrados, retención de 7 diarios y 4 semanales, copia
 externa independiente y claves bajo custodia separada. Objetivos iniciales a acordar:
 RPO de 24 horas y RTO de cuatro horas. No se han contratado servicios, programado
