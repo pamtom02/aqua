@@ -49,7 +49,26 @@ borradores móviles. Las rutas científicas incompletas mantienen sus límites.
 
 ## Evidencia
 
-Las pruebas locales validan geometrías, contención y referencias. La prueba de
-PostgreSQL verifica transacción real, repetición sin duplicados, conservación de
-ediciones y de usuarios existentes. La carga en Kubero y la lectura pública se
-documentan después de ejecutarlas y comprobarlas.
+Comprobado el 27 de noviembre de 2026 en `facu/production/api`:
+
+- 155 pruebas locales aprobadas; dos pruebas de PostgreSQL se ejecutaron en
+  [GitHub Actions](https://github.com/pamtom02/aqua/actions/runs/46047267047),
+  donde también pasaron las pruebas de procesamiento y las tres construcciones.
+- El cargador se ejecutó desde la consola de Kubero con el código del commit
+  `e5bfcde2ea6476806b4b40b99d8125a2c5e53c25`, comprobando su SHA-256 antes de usarlo.
+- Primera ejecución: 26 lagos, 78 estaciones, 2 organizaciones, 2 datasets,
+  2 versiones DRAFT, 12 escenas sintéticas y una vinculación del administrador
+  existente con el primer equipo de evaluación.
+- Segunda ejecución: cero inserciones en todas las tablas.
+- Lectura real de `/api/v1/lakes`: 24 activos, páginas de 20 y 4 registros.
+  Filtros por región: La Araucanía 7, Los Ríos 8 y Los Lagos 9.
+- Buscar `Villarrica` devuelve un lago con polígono válido y tres estaciones.
+  Los adaptadores y validadores de la app móvil aceptaron ambas respuestas.
+- Consultar lagos inactivos anónimamente sigue devolviendo HTTP 403.
+- API y PostgreSQL continúan disponibles. La revisión de la API sigue siendo
+  `a7e17c598ef465ecea06450e66a3eea6208bcd3d`: se cargaron datos sin desplegar
+  otra imagen ni cambiar la configuración de autenticación.
+
+La prueba de PostgreSQL comprueba transacción real, repetición sin duplicados,
+conservación de ediciones y de usuarios existentes. No se activó MFA en nombre
+del propietario ni se crearon credenciales nuevas.

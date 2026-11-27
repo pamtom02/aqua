@@ -91,3 +91,10 @@ SHA completo de la release publicada, no el de un commit posterior que solo camb
 documentación. Quedan pendientes la vinculación personal de MFA, las operaciones
 administrativas posteriores y un archivo real a través de ese flujo; no se declara
 la persistencia de archivos comprobada solo por ver el volumen montado.
+# Datos de evaluación — 27 de noviembre de 2026
+
+La carga explícita e idempotente y su evidencia están en
+[Datos de evaluación](EVALUATION_DATA.md). Se verificaron catálogo, filtros,
+paginación, geometrías y estaciones contra la API pública con los adaptadores
+reales de la app móvil. Los límites de los servicios científicos se conservan.
+
