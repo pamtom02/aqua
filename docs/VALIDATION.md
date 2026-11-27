@@ -47,14 +47,24 @@ Actualizado el 27 de noviembre de 2026.
   Las tres imágenes se construyeron, auditaron y publicaron con `latest` y SHA.
 - Se verificó acceso anónimo HTTP 200 a los tres manifiestos de GHCR. Digest API:
   `sha256:7ca71bcbec965dd838b98a7e71d3c50c7029744662473301fe3aa97c64d90c6d`.
-- Variables guardadas y verificadas en GitHub: `KUBERO_PIPELINE=facu` y `KUBERO_APPS=api`.
+- Variables guardadas y verificadas en GitHub: `KUBERO_PIPELINE=facu`, `KUBERO_APPS=api`
+  y `API_BASE_URL=https://api-aquabloom.inf.uct.cl`.
 - [Primer autodeploy](https://github.com/pamtom02/aqua/actions/runs/45954445421):
   falló explícitamente por ausencia de `KUBERO_TOKEN`; no se envió un restart a UCT.
 
-- Kubero abre `/login`. No se han creado aplicaciones, complementos ni volúmenes
-  durante esta continuación.
-- Falta autenticar al propietario en Kubero, configurar los secretos de infraestructura
-  y `KUBERO_TOKEN` directamente en sus destinos y verificar el dominio real.
+- Sesión de Kubero autenticada por el propietario. `facu/production` seguía sin apps.
+- Formulario de nueva app `api` preparado, todavía sin guardar ni desplegar: imagen
+  pública, puerto 8000, SSL, dominio validado como disponible por Kubero, UID/GID 10001,
+  raíz de solo lectura, sin escalada, una réplica web y cero workers, perfil Small,
+  health `/health/live` con startup 120 s y timeout 5 s, volumen `/app/data` de 8Gi
+  con `csi-cephfs-sc` y `ReadWriteOnce`, variables públicas completas y campos privados
+  vacíos. No se afirma todavía disponibilidad DNS, certificado válido ni permisos del PVC.
+- Complemento PostgreSQL preparado en el mismo formulario: instancia `postgres`,
+  base/usuario `aquabloom`, host mostrado por Kubero `api-postgres`, tag 17.12,
+  recursos 50m/500m y 128Mi/512Mi, almacenamiento 8Gi CephFS RWO. Se verificó HTTP 200
+  al manifiesto oficial `postgres:17.12`; no se han creado aún estos recursos.
+- Falta que el propietario complete contraseñas y secretos directamente en Kubero,
+  guarde el complemento y cree la app. `KUBERO_TOKEN` sigue pendiente en GitHub.
 - El SHA incorporado en cada imagen permite distinguir una API antigua de la revisión
   esperada. Un restart aceptado o una construcción correcta no prueban el despliegue.
 - MFA está implementado y probado con cuentas sintéticas; el propietario debe vincular

@@ -31,10 +31,11 @@ Monta un volumen en **/app/data**, por ejemplo aqua-files, 8Gi, clase **csi-ceph
 Agrega el complemento **PostgreSQL** a api:
 
 - Instance Name: postgres.
-- Version/Tag: 17.6.
-- 17.6 es la versión observada en el complemento, no la revisión de seguridad vigente.
-  Antes de activar producción, seleccionar una revisión 17.x actual compatible con UCT
-  o pedir su actualización al administrador. No cambiar de versión mayor sobre un volumen existente.
+- Version/Tag preparado para la base nueva: 17.12.
+- 17.6 era el valor predeterminado del complemento. El formulario admite 17.12 y
+  se verificó su manifiesto oficial en Docker Hub; falta verificar el arranque real
+  en UCT. Las pruebas de integración publicadas se ejecutaron con 17.6.
+  No cambiar de versión mayor sobre un volumen existente.
 - Database Name: aquabloom.
 - Additional Username: aquabloom.
 - Contraseñas: valores propios, configurados en Kubero.
@@ -65,6 +66,7 @@ Las migraciones se aplican automáticamente al arrancar la imagen. No ejecutes l
 | MFA_ENCRYPTION_KEY | clave Fernet propia de este proyecto, distinta de JWT_SECRET y custodiada fuera de PostgreSQL |
 | INTERNAL_SERVICE_TOKEN | otro secreto aleatorio de al menos 32 caracteres |
 | STORAGE_ROOT | /app/data |
+| TMPDIR | /app/data; necesario para cargas temporales con la raíz de solo lectura |
 | ALLOW_REGISTRATION | false, o true si el proyecto permite registro público |
 | CORS_ORIGINS | orígenes exactos de la web, separados por comas |
 | SATELLITE_SERVICE_URL | http://satellite-kuberoapp:80 |
