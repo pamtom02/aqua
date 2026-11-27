@@ -2,27 +2,68 @@ name: Deploy to Kubero
 
 on:
   workflow_run:
-    workflows: ["Build client image", "Build server image"]
-    types:
-      - completed
-    branches:
-      - main
+    workflows: ["Build API images"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubero-production
+  cancel-in-progress: false
 
 jobs:
-  deploy-kubero:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    environment: production
+    env:
+      KUBERO_TOKEN: ${{ secrets.KUBERO_TOKEN }}
+      KUBERO_PIPELINE: ${{ vars.KUBERO_PIPELINE || 'facu' }}
+      KUBERO_APPS: ${{ vars.KUBERO_APPS || 'api' }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
     steps:
-      - name: Redeploy client2 en Kubero
-        if: ${{ github.event.workflow_run.name == 'Build client image' }}
+      - name: Redeploy configured apps
+        shell: bash
         run: |
-          curl -s -o /dev/null -w "Client: %{http_code}\n" -X GET \
-            "https://kubero.inf.uct.cl/api/apps/ejemplo/production/client2/restart" \
-            -H "Authorization: Bearer ${{ secrets.KUBERO_TOKEN }}"
-
-      - name: Redeploy server2 en Kubero
-        if: ${{ github.event.workflow_run.name == 'Build server image' }}
+          set -euo pipefail
+          if [ -z "$KUBERO_TOKEN" ]; then
+            echo "::error::Configure the repository secret KUBERO_TOKEN before deployment."
+            exit 1
+          fi
+          if [[ ! "$KUBERO_PIPELINE" =~ ^[a-z0-9-]+$ ]]; then
+            echo "::error::Invalid pipeline name."
+            exit 1
+          fi
+          for app in $KUBERO_APPS; do
+            if [[ ! "$app" =~ ^[a-z0-9-]+$ ]]; then
+              echo "::error::Invalid application name."
+              exit 1
+            fi
+            code=$(curl --silent --show-error --connect-timeout 15 --max-time 60 \
+              --output /dev/null --write-out "%{http_code}" \
+              --header "Authorization: Bearer $KUBERO_TOKEN" \
+              "https://kubero.inf.uct.cl/api/apps/$KUBERO_PIPELINE/production/$app/restart")
+            if [ "$code" != "200" ]; then
+              echo "::error::Kubero rejected restart of $app (HTTP $code)."
+              exit 1
+            fi
+            echo "Restart accepted: $app"
+          done
+      - name: Verify API readiness
+        if: env.API_BASE_URL != ''
+        shell: bash
         run: |
-          curl -s -o /dev/null -w "Server: %{http_code}\n" -X GET \
-            "https://kubero.inf.uct.cl/api/apps/ejemplo/production/server2/restart" \
-            -H "Authorization: Bearer ${{ secrets.KUBERO_TOKEN }}"
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
+              "${API_BASE_URL%/}/api/v1/health" -o /tmp/aqua-health.json; then
+              cat /tmp/aqua-health.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::The API did not become ready after deployment."
+          exit 1

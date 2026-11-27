@@ -1,0 +1,80 @@
+# Local equivalent of the Kubero deployment, using PostgreSQL without PostGIS.
+services:
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: aquabloom
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: aquabloom
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aquabloom -d aquabloom"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build: ./apps/api
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://aquabloom:${POSTGRES_PASSWORD}@postgres:5432/aquabloom
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8081}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      STORAGE_ROOT: /app/data
+      SATELLITE_SERVICE_URL: http://satellite:8000
+      SCIENTIFIC_SERVICE_URL: http://scientific:8003
+    ports: ["8000:8000"]
+    volumes:
+      - api-files:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  satellite:
+    build: ./apps/satellite
+    environment:
+      SATELLITE_ENVIRONMENT: production
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      SATELLITE_REDIS_URL: redis://redis:6379/0
+    depends_on: [redis]
+
+  scientific:
+    build: ./apps/scientific
+    environment:
+      ENVIRONMENT: production
+      CORE_API_URL: http://api:8000
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+  redis:
+    image: redis:7-alpine
+
+  satellite-worker:
+    build: ./apps/satellite
+    command: python -m app.worker
+    environment:
+      SATELLITE_REDIS_URL: redis://redis:6379/0
+    depends_on: [redis]
+    healthcheck:
+      disable: true
+
+  training-worker:
+    build: ./apps/scientific
+    command: python -m app.training_worker
+    environment:
+      DATABASE_URL: postgresql://aquabloom:${POSTGRES_PASSWORD}@postgres:5432/aquabloom
+      CORE_API_URL: http://api:8000
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+volumes:
+  postgres-data:
+  api-files:
