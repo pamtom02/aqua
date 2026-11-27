@@ -150,3 +150,31 @@ print("PostgreSQL, sessions, roles, isolation, GeoJSON and migrations: OK")
     environment = {**os.environ, "DATABASE_URL": client}
     result = subprocess.run([sys.executable, "-c", script], env=environment, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_evaluation_seed_is_additive_idempotent_and_preserves_edits(client):
+    script = r'''
+import os
+import psycopg
+from app.start import prepare
+from tools.seed_evaluation import seed, record_id
+prepare()
+with psycopg.connect(os.environ["DATABASE_URL"]) as connection:
+    before = connection.execute("SELECT id,role,status FROM public.users ORDER BY id").fetchall()
+    first = seed(connection)
+    assert first["inserted"]["lakes"] == 26
+    assert first["inserted"]["stations"] == 78
+    connection.execute("UPDATE public.lakes SET description=%s WHERE id=%s",
+                       ("Evaluation edit retained",record_id("lake/1")))
+    second = seed(connection)
+    assert sum(second["inserted"].values()) == 0
+    assert connection.execute("SELECT description FROM public.lakes WHERE id=%s",
+                              (record_id("lake/1"),)).fetchone()[0] == "Evaluation edit retained"
+    assert connection.execute("SELECT id,role,status FROM public.users ORDER BY id").fetchall() == before
+print("Evaluation seed: geometry, relations, idempotency and preserved edits OK")
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script], env={**os.environ, "DATABASE_URL": client},
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
